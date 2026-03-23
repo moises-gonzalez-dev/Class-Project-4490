@@ -1,18 +1,11 @@
-//NAME: HAONAN CHEN
-//DATE: 1/27/2026
+// program: UNCANNY VALLEY
+// date: FALL 2026
+// Framework for a 3D game.
 
-//program: fps.cpp
-//author:  Gordon Griesel
-//date:    Winter 2020
-//
-//Framework for a 3D game.
-//
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <X11/Xlib.h>
-//X11 utilities not currently needed.
-//#include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
@@ -31,15 +24,17 @@ void identity33(Matrix m);
 void yy_transform(const Vec rotate, Matrix a);
 void trans_vector(Matrix mat, const Vec in, Vec out);
 void screenShot();
+void cube(float w1, float h1, float d1);
+void tube(int n, float rad, float len);
 
 #define VecMake(a,b,c,d) d[0]=a; d[1]=b; d[2]=c
 
 
 class Camera {
 public:
-    Vec position;
-	Vec last_position;
-    Vec direction;
+  Vec position;
+  Vec last_position;
+  Vec direction;
 	Vec force;
 	Vec vel;
 public:
@@ -155,17 +150,141 @@ public:
 	}
 };
 
+class Enemy {
+public:
+    Vec pos;
+    float yaw;
+    bool eyesOn;
+    int blinkTimer;
+
+    Enemy() {
+        VecMake(20.0f, 0.0f, -50.0f, pos);
+        yaw = 0.0f;
+        eyesOn = true;
+        blinkTimer = 0;
+    }
+
+    void update(Camera &cam) {
+        float dx = cam.position[0] - pos[0];
+        float dz = cam.position[2] - pos[2];
+
+        // face the player (note: atan2(y,x) order used to produce degrees)
+        yaw = atan2f(dx, dz) * 180.0f / (float)M_PI;
+
+        float dist = sqrtf(dx*dx + dz*dz);
+
+        // follow but keep distance
+        if (dist > 16.0f) {
+            pos[0] += dx * 0.01f;
+            pos[2] += dz * 0.01f;
+        }
+
+        blinkTimer++;
+
+      if (blinkTimer > 300 + rand() % 300) {
+          eyesOn = !eyesOn;
+          blinkTimer = 0;
+      }
+    }
+
+    void draw() {
+        glPushMatrix();
+
+        // position & orientation
+        glTranslatef(pos[0], pos[1], pos[2]);
+        glRotatef(yaw, 0.0f, 1.0f, 0.0f);
+
+        // BODY
+        glColor3ub(120,120,120);
+        glPushMatrix();
+        glTranslatef(0.0f,2.5f,0.0f);
+        cube(1.5f,3.0f,1.0f);
+        glPopMatrix();
+
+        // HEAD
+        glColor3ub(120,120,120);
+        glPushMatrix();
+        glTranslatef(0.0f,4.5f,0.0f);
+        cube(1.2f,1.2f,1.2f);
+        glPopMatrix();
+
+        // EYES
+        glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT);
+        glDisable(GL_LIGHTING);
+        // ensure depth test remains enabled:
+        glEnable(GL_DEPTH_TEST);
+        if (eyesOn)
+            glColor3ub(255,0,0);
+        else
+            glColor3ub(0,0,0);
+
+        // left eye
+        glPushMatrix();
+        glTranslatef(-0.25f, 4.6f, 0.8f);
+        GLUquadric *q = gluNewQuadric();
+        gluSphere(q, 0.15, 12, 12);
+        gluDeleteQuadric(q);
+        glPopMatrix();
+
+        // right eye
+        glPushMatrix();
+        glTranslatef(0.25f, 4.6f, 0.8f);
+        q = gluNewQuadric();
+        gluSphere(q, 0.15, 12, 12);
+        gluDeleteQuadric(q);
+        glPopMatrix();
+
+        glPopAttrib();
+
+        // LEFT ARM
+        glColor3ub(120,120,120);
+        glPushMatrix();
+        glTranslatef(-1.2f,2.8f,0.0f);
+        glRotatef(90.0f,1.0f,0.0f,0.0f);
+        tube(10,0.2f,2.0f);
+        glPopMatrix();
+
+        // RIGHT ARM
+        glPushMatrix();
+        glTranslatef(1.2f,2.8f,0.0f);
+        glRotatef(90.0f,1.0f,0.0f,0.0f);
+        tube(10,0.2f,2.0f);
+        glPopMatrix();
+
+        // LEFT LEG
+        glPushMatrix();
+        glTranslatef(-0.4f,0.8f,0.0f);
+        glRotatef(90.0f,1.0f,0.0f,0.0f);
+        tube(10,0.3f,2.0f);
+        glPopMatrix();
+
+        // RIGHT LEG
+        glPushMatrix();
+        glTranslatef(0.4f,0.8f,0.0f);
+        glRotatef(90.0f,1.0f,0.0f,0.0f);
+        tube(10,0.3f,2.0f);
+        glPopMatrix();
+
+        glPopMatrix();
+    }
+};
+
 class Global {
 public:
 	int xres, yres;
 	Flt aspectRatio;
 	//Vec cameraPosition;
 	Camera camera;
+  Enemy enemy;
 	GLfloat lightPosition[4];
 	int state;
 	int start_screen;
 	time_t timeStart;
 	time_t timeCurrent;
+
+  const float HALLWAY_WIDTH  = 12.0f;
+  const float HALLWAY_HEIGHT = 10.0f;
+  const float HALLWAY_LENGTH = 500.0f;
 	Global() {
 		//constructor
 		xres=800;
@@ -187,19 +306,27 @@ public:
 	int check_keys(XEvent *e);
 	void physics();
 	void render();
+
+  void clampPlayerToHallway(Camera &cam) {
+        float margin = 0.5f; // half a unit so player doesn't poke into walls
+
+        // X bounds (left/right walls)
+        if (cam.position[0] < -HALLWAY_WIDTH + margin) cam.position[0] = -HALLWAY_WIDTH + margin;
+        if (cam.position[0] >  HALLWAY_WIDTH - margin) cam.position[0] =  HALLWAY_WIDTH - margin;
+
+        // Y bounds (floor/ceiling)
+        if (cam.position[1] < 1.0f) cam.position[1] = 1.0f;           // eye height above floor
+        if (cam.position[1] > HALLWAY_HEIGHT - 1.0f) cam.position[1] = HALLWAY_HEIGHT - 1.0f;
+
+        // Z bounds (back wall / end of hallway)
+        if (cam.position[2] < 0.1f) cam.position[2] = 0.1f;            // behind player wall
+        if (cam.position[2] > HALLWAY_LENGTH - margin) cam.position[2] = HALLWAY_LENGTH - margin;
+    }
 } g;
 
 
 void matrixFromAxisAngle(const Vec v, Flt ang, Matrix m)
 {
-    // arguments
-    // v   = vector indicating the axis
-    // ang = amount of rotation
-    // m   = matrix to be updated
-    // This source was used during research...
-    // http://www.euclideanspace.com/maths/geometry/rotations/
-    // conversions/angleToMatrix/
-    //
     struct Axisangle {
         Flt angle;
         Flt x,y,z;
@@ -238,8 +365,6 @@ private:
 	GLXContext glc;
 public:
 	X11_wrapper() {
-		//Look here for information on XVisualInfo parameters.
-		//http://www.talisman.org/opengl-1.1/Reference/glXChooseVisual.html
 		Window root;
 		GLint att[] = { GLX_RGBA,
 						GLX_STENCIL_SIZE, 2,
@@ -308,7 +433,7 @@ public:
 	void set_title() {
 		//Set the window title bar.
 		XMapWindow(dpy, win);
-		XStoreName(dpy, win, "fps framework");
+		XStoreName(dpy, win, "UNCANNY VALLEY");
 	}
 	bool getXPending() {
 		return XPending(dpy);
@@ -328,6 +453,7 @@ int take_ss = 0;
 int main()
 {
 	g.init_opengl();
+  srand(time(NULL));
 	int done = 0;
 	g.timeStart = time(nullptr);
 
@@ -356,24 +482,38 @@ void Global::init() {
 
 void Global::init_opengl()
 {
-	//OpenGL initialization
-	glClearColor(0.0f, 0.1f, 0.3f, 0.0f);
-	//Enable surface rendering priority using a Z-buffer.
-	glClearDepth(1.0);
-	glDepthFunc(GL_LESS);
-	glEnable(GL_DEPTH_TEST);
-	//Enable Phong shading of surfaces.
-	glShadeModel(GL_SMOOTH);
-	//Enable this so material colors are the same as vertex colors.
-	glEnable(GL_COLOR_MATERIAL);
-	//Enable diffuse lighting of surfaces with normals defined.
-	glEnable(GL_LIGHTING);
-	//Turn on a light
-	glLightfv(GL_LIGHT0, GL_POSITION, g.lightPosition);
-	glEnable(GL_LIGHT0);
-	//Do this to allow fonts
-	glEnable(GL_TEXTURE_2D);
-	initialize_fonts();
+    //OpenGL initialization
+    glClearColor(0.0f, 0.1f, 0.3f, 0.0f);
+    //Enable surface rendering priority using a Z-buffer.
+    glClearDepth(1.0);
+    glDepthFunc(GL_LESS);
+    glEnable(GL_DEPTH_TEST);
+    //Enable Phong shading of surfaces.
+    glShadeModel(GL_SMOOTH);
+    //Enable this so material colors are the same as vertex colors.
+    glEnable(GL_COLOR_MATERIAL);
+    // Make glColor affect ambient+diffuse material
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+    // Normalize normals after transforms (keeps lighting correct)
+    glEnable(GL_NORMALIZE);
+    //Enable diffuse lighting of surfaces with normals defined.
+    glEnable(GL_LIGHTING);
+    //Turn on a light (world light)
+    glLightfv(GL_LIGHT0, GL_POSITION, g.lightPosition);
+    glEnable(GL_LIGHT0);
+
+    // Initialize LIGHT1 defaults (flashlight) — enabled/actualized per-frame in render()
+    GLfloat l1ambient[]  = {0.0f, 0.0f, 0.0f, 1.0f};
+    GLfloat l1diffuse[]  = {1.0f, 1.0f, 1.0f, 1.0f};
+    GLfloat l1specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glLightfv(GL_LIGHT1, GL_AMBIENT, l1ambient);
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, l1diffuse);
+    glLightfv(GL_LIGHT1, GL_SPECULAR, l1specular);
+    // Note: GL_LIGHT1 will be enabled each frame and its position/direction set in render()
+
+    //Do this to allow fonts
+    glEnable(GL_TEXTURE_2D);
+    initialize_fonts();
 }
 
 Flt vecNormalize(Vec vec) {
@@ -462,15 +602,13 @@ int Global::check_keys(XEvent *e)
 			case XK_2:
 				system("convert -loop 0 -coalesce -layers OptimizeFrame -delay 20 ./images/img*.jpg abc.gif");
 				break;
-			case XK_3:
-				g.state = !g.state;
-				break;
 			case XK_4:
 				g.start_screen = 0;
 				break;
 			case XK_d:
 				//g.camera.position[0] += 1.0;
 				g.camera.moveLeftRight(1.0);
+        clampPlayerToHallway(g.camera);
 				break;
 			case XK_a:
 				if (ctrl) {
@@ -478,23 +616,19 @@ int Global::check_keys(XEvent *e)
 				}
 				//g.camera.position[0] -= 1.0;
 				g.camera.moveLeftRight(-1.0);
-				//g.camera.position[0] = g.camera.direction[0] + g.camera.position[0];
-				//g.camera.position[0] -= 1.0;
-				//g.camera.position[0] -= g.camera.direction[0] + 1.0;
-				//g.camera.position[0] -= g.camera.direction[0];
-				//g.camera.position[1] -= g.camera.direction[1];
-				//g.camera.position[2] -= g.camera.direction[2];
+				
+        clampPlayerToHallway(g.camera);
 
 				break;
-			case XK_w:
+			case XK_u:
 				//g.camera.position[1] += 0.2;
     			g.camera.translate(0.0, 0.2, 0.0);
 				break;
-			case XK_s:
+			case XK_Shift_L:
 				g.camera.position[1] -= 0.2;
     			//g.camera.lookUpDown(0.1);
 				break;
-			case XK_f:
+			case XK_w:
 				g.camera.last_position[0] = g.camera.position[0];
 				g.camera.last_position[1] = g.camera.position[1];
 				g.camera.last_position[2] = g.camera.position[2];
@@ -506,9 +640,10 @@ int Global::check_keys(XEvent *e)
 				if (g.state == 1) {
 					g.camera.force[1] += 0.09;
 				}
-				//g.camera.position[2] -= 1.0;
+				
+        clampPlayerToHallway(g.camera);
 				break;
-			case XK_b:
+			case XK_s:
 				g.camera.last_position[0] = g.camera.position[0];
 				g.camera.last_position[1] = g.camera.position[1];
 				g.camera.last_position[2] = g.camera.position[2];
@@ -516,7 +651,8 @@ int Global::check_keys(XEvent *e)
 				g.camera.position[0] -= g.camera.direction[0];
 				g.camera.position[1] -= g.camera.direction[1];
 				g.camera.position[2] -= g.camera.direction[2];
-				//g.camera.position[2] += 1.0;
+				
+        clampPlayerToHallway(g.camera);
 				break;
 			case XK_space:
 				if (g.state == 1 && g.camera.position[1] <= 3.2) {
@@ -658,7 +794,6 @@ void cube(float w1, float h1, float d1)
 		glVertex3f( w, h, d);
 		glVertex3f( w,-h, d);
 		glVertex3f( w,-h,-d);
-		glEnd();
 	glEnd();
 }
 
@@ -695,42 +830,146 @@ void tube(int n, float rad, float len)
 	glEnd();
 }
 
-
-void drawGround()
+void drawHallway()
 {
-	int n = 11;
-	float w = 10.0;
-	float d = 10.0;
-	float w2 = w*.49;
-	float d2 = d*.49;
-	float x = -(n/2)*w;
-	float y =    0.0;
-	float z = -(n/2)*d;
-	float xstart = x;
-	static int firsttime = 1;
-	if (firsttime) {
-		firsttime = 0;
-		printf("x: %f\n", x);
-	}
-	for (int i=0; i<n; i++) {
-		for (int j=0; j<n; j++) {
-			glPushMatrix();
-			glTranslatef(x, y, z);
-			glColor3ub(j*20, 30, 120-i*5);
-			glBegin(GL_QUADS);
-				glNormal3f( 0.0f, 1.0f, 0.0f);
-				glVertex3f( w2, 0.0, -d2);
-				glVertex3f(-w2, 0.0, -d2);
-				glVertex3f(-w2, 0.0,  d2);
-				glVertex3f( w2, 0.0,  d2);
-			glEnd();
-			glPopMatrix();
-			x += w;
-		}
-		x = xstart;
-		z += w;
-	}
+    float width = 12.0f;
+    float height = 10.0f;
+    float length = 500.0f;
+
+    int tilesX = 10; // horizontal subdivisions
+    int tilesY = 10; // vertical subdivisions for walls
+    int tilesZ = 50; // length subdivisions
+    float tileW = (2 * width) / tilesX;
+    float tileH = height / tilesY;
+    float tileL = length / tilesZ;
+
+    // --- FLOOR ---
+    for (int i = 0; i < tilesX; i++) {
+        for (int j = 0; j < tilesZ; j++) {
+            bool even = (i + j) % 2 == 0;
+            glColor3ub(even ? 60 : 100, even ? 60 : 100, even ? 60 : 100);
+
+            float x0 = -width + i * tileW;
+            float x1 = x0 + tileW;
+            float z0 = j * tileL;
+            float z1 = z0 + tileL;
+
+            glBegin(GL_QUADS);
+                glNormal3f(0,1,0);
+                glVertex3f(x0, 0, z0);
+                glVertex3f(x1, 0, z0);
+                glVertex3f(x1, 0, z1);
+                glVertex3f(x0, 0, z1);
+            glEnd();
+        }
+    }
+
+    // --- CEILING ---
+    for (int i = 0; i < tilesX; i++) {
+        for (int j = 0; j < tilesZ; j++) {
+            bool even = (i + j) % 2 == 0;
+            glColor3ub(even ? 40 : 80, even ? 40 : 80, even ? 40 : 80);
+
+            float x0 = -width + i * tileW;
+            float x1 = x0 + tileW;
+            float z0 = j * tileL;
+            float z1 = z0 + tileL;
+
+            glBegin(GL_QUADS);
+                glNormal3f(0,-1,0);
+                glVertex3f(x0, height, z0);
+                glVertex3f(x1, height, z0);
+                glVertex3f(x1, height, z1);
+                glVertex3f(x0, height, z1);
+            glEnd();
+        }
+    }
+
+    // --- LEFT WALL ---
+    for (int j = 0; j < tilesZ; j++) {
+        for (int i = 0; i < tilesY; i++) {
+            bool even = (i + j) % 2 == 0;
+            glColor3ub(even ? 60 : 100, even ? 60 : 100, even ? 60 : 100);
+
+            float y0 = i * tileH;
+            float y1 = y0 + tileH;
+            float z0 = j * tileL;
+            float z1 = z0 + tileL;
+
+            glBegin(GL_QUADS);
+                glNormal3f(1,0,0);
+                glVertex3f(-width, y0, z0);
+                glVertex3f(-width, y0, z1);
+                glVertex3f(-width, y1, z1);
+                glVertex3f(-width, y1, z0);
+            glEnd();
+        }
+    }
+
+    // --- RIGHT WALL ---
+    for (int j = 0; j < tilesZ; j++) {
+        for (int i = 0; i < tilesY; i++) {
+            bool even = (i + j) % 2 == 0;
+            glColor3ub(even ? 60 : 100, even ? 60 : 100, even ? 60 : 100);
+
+            float y0 = i * tileH;
+            float y1 = y0 + tileH;
+            float z0 = j * tileL;
+            float z1 = z0 + tileL;
+
+            glBegin(GL_QUADS);
+                glNormal3f(-1,0,0);
+                glVertex3f(width, y0, z0);
+                glVertex3f(width, y0, z1);
+                glVertex3f(width, y1, z1);
+                glVertex3f(width, y1, z0);
+            glEnd();
+        }
+    }
+
+    // --- BACK WALL (behind player, z=0) ---
+    for (int i = 0; i < tilesX; i++) {
+        for (int j = 0; j < tilesY; j++) {
+            bool even = (i + j) % 2 == 0;
+            glColor3ub(even ? 80 : 120, even ? 80 : 120, even ? 80 : 120);
+
+            float x0 = -width + i * tileW;
+            float x1 = x0 + tileW;
+            float y0 = j * tileH;
+            float y1 = y0 + tileH;
+
+            glBegin(GL_QUADS);
+                glNormal3f(0,0,1);
+                glVertex3f(x0, y0, 0);
+                glVertex3f(x1, y0, 0);
+                glVertex3f(x1, y1, 0);
+                glVertex3f(x0, y1, 0);
+            glEnd();
+        }
+    }
+
+    // --- FRONT WALL (far end, z=length) ---
+    for (int i = 0; i < tilesX; i++) {
+        for (int j = 0; j < tilesY; j++) {
+            bool even = (i + j) % 2 == 0;
+            glColor3ub(even ? 80 : 120, even ? 80 : 120, even ? 80 : 120);
+
+            float x0 = -width + i * tileW;
+            float x1 = x0 + tileW;
+            float y0 = j * tileH;
+            float y1 = y0 + tileH;
+
+            glBegin(GL_QUADS);
+                glNormal3f(0,0,-1);
+                glVertex3f(x0, y0, length);
+                glVertex3f(x1, y0, length);
+                glVertex3f(x1, y1, length);
+                glVertex3f(x0, y1, length);
+            glEnd();
+        }
+    }
 }
+
 const Flt GRAVITY = -0.02f;
 
 void Global::physics()
@@ -747,8 +986,8 @@ void Global::physics()
 			g.camera.position[1] = 3.0;
 			g.camera.vel[1] = 0.0;
 		}
-
 	}
+  enemy.update(camera);
 }
 
 void Global::render()
@@ -775,10 +1014,10 @@ void Global::render()
 	} else {
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	Rect r;
+
+
 	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-	//
 	//3D mode
-	//
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	gluPerspective(45.0f, g.aspectRatio, 0.5f, 1000.0f);
@@ -787,34 +1026,43 @@ void Global::render()
 	//for documentation...
 	Vec up = { 0.0, 1.0, 0.0 };
 	gluLookAt(
-		g.camera.position[0], g.camera.position[1], g.camera.position[2],
-		g.camera.position[0]+g.camera.direction[0],
-		g.camera.position[1]+g.camera.direction[1],
-		g.camera.position[2]+g.camera.direction[2],
-		up[0], up[1], up[2]);
-	glLightfv(GL_LIGHT0, GL_POSITION, g.lightPosition);
-	//
-	drawGround();
-	//
-	//Draw tube
-	glPushMatrix();
-	glRotatef(45.0, 0.0, 1.0, 0.0);
-	glTranslatef(-8.0, 2.0, -8.0);
-	glRotatef(-90.0, 1.0, 0.0, 0.0);
-	glColor3ub(250, 20, 250);
-	tube(10, 2.0, 20.0);
-	glPopMatrix();
-	//
-	//Draw cube
-	glPushMatrix();
-	glRotatef(25.0, 10.0, 21.0, 0.0);
-	glTranslatef(10.0, 2.0, 10.0);
-	glColor3ub(20, 250, 250);
-	cube(10.0, 10.0, 10.0);
-	glPopMatrix();
-	//
+        g.camera.position[0], g.camera.position[1], g.camera.position[2],
+        g.camera.position[0]+g.camera.direction[0],
+        g.camera.position[1]+g.camera.direction[1],
+        g.camera.position[2]+g.camera.direction[2],
+        up[0], up[1], up[2]);
+      glLightfv(GL_LIGHT0, GL_POSITION, g.lightPosition);
+
+        // We set the light in eye coordinates so it always follows the camera exactly.
+        // Push/pop so we don't disturb the modelview used for world drawing.
+        glPushMatrix();
+        glLoadIdentity(); // now coordinates are eye coords
+
+        // place the flashlight at the eye origin
+        GLfloat flashlightPos_eye[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        // in eye coords the camera looks down -Z
+        GLfloat flashlightDir_eye[3] = { 0.0f, 0.0f, -1.0f };
+
+        // Apply to LIGHT1
+        glLightfv(GL_LIGHT1, GL_POSITION, flashlightPos_eye);
+        glLightfv(GL_LIGHT1, GL_SPOT_DIRECTION, flashlightDir_eye);
+        glLightf(GL_LIGHT1, GL_SPOT_CUTOFF, 25.0f);      // cone angle
+        glLightf(GL_LIGHT1, GL_SPOT_EXPONENT, 50.0f);    // concentration
+
+        glLightf(GL_LIGHT1, GL_CONSTANT_ATTENUATION, 1.0f);
+        glLightf(GL_LIGHT1, GL_LINEAR_ATTENUATION, 0.01f);
+        glLightf(GL_LIGHT1, GL_QUADRATIC_ATTENUATION, 0.001f);
+
+        // Make sure LIGHT1 is enabled
+        glEnable(GL_LIGHT1);
+
+        glPopMatrix();
+    
+
+	drawHallway();
+  enemy.draw();
+	
 	//switch to 2D mode
-	//
 	glViewport(0, 0, g.xres, g.yres);
 	glMatrixMode(GL_MODELVIEW);   glLoadIdentity();
 	glMatrixMode (GL_PROJECTION); glLoadIdentity();
@@ -824,14 +1072,10 @@ void Global::render()
 	r.bot = g.yres - 20;
 	r.left = 10;
 	r.center = 0;
-	ggprint8b(&r, 16, 0x00887766, "fps framework");
-	ggprint8b(&r, 16, 0x00ff00ff, "use WASD to move left/right and up/down");
-	ggprint8b(&r, 16, 0x00ff00ff, "use arrow keys or Mouse to look");
-	ggprint8b(&r, 16, 0x00ff00ff, "use F/B/mouse buttons to move forward or back");
-	ggprint8b(&r, 16, 0x00ffffff, "press 1 for screenshots to start and stop");
-	ggprint8b(&r, 16, 0x00ffffff, "press 2 to turn screenshots into gif(take a while)");
-	ggprint8b(&r, 16, 0x00ff00ff, "press 3 to toggle player mode");
-	ggprint8b(&r, 16, 0x00ff00ff, "space to jump in player mode");
+	ggprint8b(&r, 16, 0x00887766, "UNCANNY VALLEY");
+	ggprint8b(&r, 16, 0x00ff00ff, "use WASD to MOVE");
+  ggprint8b(&r, 16, 0x00ff00ff, "use SPACE to JUMP");
+	ggprint8b(&r, 16, 0x00ff00ff, "use ARROW KEYS to LOOK AROUND");
 	glPopAttrib();
 }
 }
@@ -873,4 +1117,3 @@ void screenShot()
     system(t2);
     unlink(ts);
 }
-
