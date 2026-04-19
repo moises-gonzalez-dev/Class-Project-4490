@@ -15,6 +15,7 @@
 #include "fonts.h"
 #include <unistd.h>
 #include <ctime>
+#include "image.h"
 
 typedef float Flt;
 typedef Flt Vec[3];
@@ -29,6 +30,7 @@ void tube(int n, float rad, float len);
 
 #define VecMake(a,b,c,d) d[0]=a; d[1]=b; d[2]=c
 
+Image scary_face("scary_face.png");
 
 class Camera {
 public:
@@ -279,6 +281,7 @@ public:
 	GLfloat lightPosition[4];
 	int state;
 	int start_screen;
+	int menu_screen;
 	time_t timeStart;
 	time_t timeCurrent;
 	int fps;
@@ -301,6 +304,7 @@ public:
 		//state = 1 is player 
 		//state = 0 is free move
 		start_screen = 1;
+		menu_screen = 0;
 	}
 	void init_opengl();
 	void init();
@@ -455,7 +459,8 @@ int take_ss = 0;
 int main()
 {
 	g.init_opengl();
-  srand(time(NULL));
+	scary_face.upload();
+  	srand(time(NULL));
 	int done = 0;
 	int nframes = 0;
 	g.timeStart = time(nullptr);
@@ -588,105 +593,79 @@ void Global::check_mouse(XEvent *e)
 
 int Global::check_keys(XEvent *e)
 {
-	//Was there input from the keyboard?
-	static int ctrl = 0;
-	if (e->type == KeyPress) {
-		int key = (XLookupKeysym(&e->xkey, 0) & 0x0000ffff);
-		if (key == XK_Control_L) {
-			ctrl = 1;
-			return 0;
-		}
-	}
-	if (e->type == KeyRelease) {
-		int key = (XLookupKeysym(&e->xkey, 0) & 0x0000ffff);
-		if (key == XK_Control_L) {
-			ctrl = 0;
-			return 0;
-		}
-	}
-	if (e->type == KeyPress) {
-		int key = (XLookupKeysym(&e->xkey, 0) & 0x0000ffff);
-		switch(key) {
-			case XK_1:
-				//take_ss = !take_ss;
-				break;
-			case XK_2:
-				system("convert -loop 0 -coalesce -layers OptimizeFrame -delay 20 ./images/img*.jpg abc.gif");
-				break;
-			case XK_4:
-				g.start_screen = 0;
-				break;
-			case XK_d:
-				//g.camera.position[0] += 1.0;
-				g.camera.moveLeftRight(1.0);
-        clampPlayerToHallway(g.camera);
-				break;
-			case XK_a:
-				if (ctrl) {
-					//g.camera.moveLeftRight(-0.1);
-				}
-				//g.camera.position[0] -= 1.0;
-				g.camera.moveLeftRight(-1.0);
-				
-        clampPlayerToHallway(g.camera);
+    //static int ctrl = 0;
+    static bool keys[65536] = {};
 
-				break;
-			case XK_u:
-				//g.camera.position[1] += 0.2;
-    			g.camera.translate(0.0, 0.2, 0.0);
-				break;
-			case XK_Shift_L:
-				g.camera.position[1] -= 0.2;
-    			//g.camera.lookUpDown(0.1);
-				break;
-			case XK_w:
-				g.camera.last_position[0] = g.camera.position[0];
-				g.camera.last_position[1] = g.camera.position[1];
-				g.camera.last_position[2] = g.camera.position[2];
+    if (e->type == KeyPress) {
+        int key = (XLookupKeysym(&e->xkey, 0) & 0x0000ffff);
+        keys[key] = true;
 
-				g.camera.position[0] += g.camera.direction[0];
-				g.camera.position[1] += g.camera.direction[1];
-				g.camera.position[2] += g.camera.direction[2];
+        //if (key == XK_Control_L) { ctrl = 1; return 0; }
+        
+        // Single-press actions (non-movement)
+        switch(key) {
+            case XK_4:      
+				g.start_screen = 0; 
+				g.menu_screen = 1;
+				break;
+			case XK_5:
+				g.menu_screen = 0;
+				break;
+            case XK_space:
+                if (g.state == 1 && g.camera.position[1] <= 3.2)
+                    g.camera.force[1] += 0.2;
+                break;
+            case XK_Escape: return 1;
+        }
+    }
 
-				if (g.state == 1) {
-					g.camera.force[1] += 0.09;
-				}
-				
-        clampPlayerToHallway(g.camera);
-				break;
-			case XK_s:
-				g.camera.last_position[0] = g.camera.position[0];
-				g.camera.last_position[1] = g.camera.position[1];
-				g.camera.last_position[2] = g.camera.position[2];
-				
-				g.camera.position[0] -= g.camera.direction[0];
-				g.camera.position[1] -= g.camera.direction[1];
-				g.camera.position[2] -= g.camera.direction[2];
-				
-        clampPlayerToHallway(g.camera);
-				break;
-			case XK_space:
-				if (g.state == 1 && g.camera.position[1] <= 3.2) {
-					g.camera.force[1] += 0.2;
-				}
-				break;
-			case XK_Down:
-				g.camera.lookUpDown(0.1);
-				break;
-			case XK_Up:
-				g.camera.lookUpDown(-0.1);
-				break;
-			case XK_Left:
-				g.camera.lookLeftRight(0.1);
-				break;
-			case XK_Right:
-				g.camera.lookLeftRight(-0.1);
-				break;
-			case XK_Escape:
-				return 1;
-		}
-	}
-	return 0;
+    if (e->type == KeyRelease) {
+        int key = (XLookupKeysym(&e->xkey, 0) & 0x0000ffff);
+        keys[key] = false;
+        //if (key == XK_Control_L) { ctrl = 0; return 0; }
+    }
+
+    // --- Movement: process all held keys together ---
+    bool moved = false;
+
+    // Forward/back
+    if (keys[XK_w]) {
+        g.camera.last_position[0] = g.camera.position[0];
+        g.camera.last_position[1] = g.camera.position[1];
+        g.camera.last_position[2] = g.camera.position[2];
+        g.camera.position[0] += g.camera.direction[0];
+        g.camera.position[1] += g.camera.direction[1];
+        g.camera.position[2] += g.camera.direction[2];
+        if (g.state == 1) g.camera.force[1] += 0.09;
+        moved = true;
+    }
+    if (keys[XK_s]) {
+        g.camera.last_position[0] = g.camera.position[0];
+        g.camera.last_position[1] = g.camera.position[1];
+        g.camera.last_position[2] = g.camera.position[2];
+        g.camera.position[0] -= g.camera.direction[0];
+        g.camera.position[1] -= g.camera.direction[1];
+        g.camera.position[2] -= g.camera.direction[2];
+        moved = true;
+    }
+
+    // Strafe
+    if (keys[XK_d]) { g.camera.moveLeftRight(1.0);  moved = true; }
+    if (keys[XK_a]) { g.camera.moveLeftRight(-1.0); moved = true; }
+
+    // Vertical
+    if (keys[XK_u])       g.camera.translate(0.0, 0.2, 0.0);
+    if (keys[XK_Shift_L]) g.camera.position[1] -= 0.2;
+
+    // Look
+    if (keys[XK_Down])  g.camera.lookUpDown(0.1);
+    if (keys[XK_Up])    g.camera.lookUpDown(-0.1);
+    if (keys[XK_Left])  g.camera.lookLeftRight(0.1);
+    if (keys[XK_Right]) g.camera.lookLeftRight(-0.1);
+
+    if (moved) clampPlayerToHallway(g.camera);
+
+    return 0;
 }
 
 void identity33(Matrix m)
@@ -1003,131 +982,182 @@ void Global::physics()
 
 void Global::render()
 {
-	g.timeCurrent = time(nullptr);
-	if (g.start_screen && (timeCurrent - timeStart < 9.0f)) {
-		glClearColor(0.0f, 0.0f, 200.0f, 1.0f);
+    g.timeCurrent = time(nullptr);
+    double elapsed = difftime(timeCurrent, timeStart);
+
+    if (g.start_screen && (elapsed < 9.0)) {
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+        glViewport(0, 0, g.xres, g.yres);
+        glMatrixMode(GL_PROJECTION); glLoadIdentity();
+        gluOrtho2D(0, g.xres, 0, g.yres);
+        glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+        glPushAttrib(GL_ENABLE_BIT);
+        glDisable(GL_LIGHTING);
+
+        if (elapsed > 5.0) {
+            // goes from 0.0 to 1.0 over the last 4 seconds
+            float t = (float)(elapsed - 5.0) / 4.0f;
+            if (t > 1.0f) t = 1.0f;
+
+            // scale from tiny (10px) to full size
+            float maxW = 300.0f;
+            float maxH = 300.0f;
+            float w = 10.0f + (maxW - 10.0f) * t;
+            float h = 10.0f + (maxH - 10.0f) * t;
+
+            float cx = g.xres / 2.0f;
+            float cy = g.yres / 2.0f;
+            float x0 = cx - w * 0.5f;
+            float x1 = cx + w * 0.5f;
+            float y0 = cy - h * 0.5f;
+            float y1 = cy + h * 0.5f;
+
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, scary_face.texid); 
+            glColor3f(1.0f, 1.0f, 1.0f);
+            glBegin(GL_QUADS);
+                glTexCoord2f(0, 1); glVertex2f(x0, y0);
+				glTexCoord2f(1, 1); glVertex2f(x1, y0);
+				glTexCoord2f(1, 0); glVertex2f(x1, y1);
+				glTexCoord2f(0, 0); glVertex2f(x0, y1);
+            glEnd();
+            glDisable(GL_TEXTURE_2D);
+        }
+
+        // --- text ---
+        Rect r;
+        r.bot = g.yres - 50;
+        r.left = g.xres / 2;
+        r.center = 20;
+        ggprint16(&r, 16, 0x00ffffff, "UNCANNY VALLEY");
+
+        Rect r2;
+		r2.bot = (int)(g.yres * 0.15f);  
+		r2.left = g.xres / 2;
+		r2.center = 20;
+		ggprint12(&r2, 16, 0x00ffffff, "Press 4 to Skip");
+
+        glPopAttrib();
+		
+	}else if (g.start_screen) {
+		g.start_screen = 0;
+		g.menu_screen = 1;
+    } else if (g.menu_screen) {
+		
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 		glViewport(0, 0, g.xres, g.yres);
-		//glMatrixMode(GL_MODELVIEW);
+		glMatrixMode(GL_PROJECTION); glLoadIdentity();
+		gluOrtho2D(0, g.xres, 0, g.yres);
+		glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+		glPushAttrib(GL_ENABLE_BIT);
+		glDisable(GL_LIGHTING);
+
+		int bw = 200, bh = 60;
+		int cx = g.xres / 2;
+		int cy = g.yres / 2;
+		glDisable(GL_DEPTH_TEST);
+
+		// draw box
+		glColor4f(0.1f, 0.1f, 0.1f, 0.85f);
+		glBegin(GL_QUADS);
+			glVertex2f(cx - bw/2, cy - bh/2);
+			glVertex2f(cx + bw/2, cy - bh/2);
+			glVertex2f(cx + bw/2, cy + bh/2);
+			glVertex2f(cx - bw/2, cy + bh/2);
+		glEnd();
+
+		// border
+		glColor3f(1.0f, 1.0f, 1.0f);
+		glLineWidth(2.0f);
+		glBegin(GL_LINE_LOOP);
+			glVertex2f(cx - bw/2, cy - bh/2);
+			glVertex2f(cx + bw/2, cy - bh/2);
+			glVertex2f(cx + bw/2, cy + bh/2);
+			glVertex2f(cx - bw/2, cy + bh/2);
+		glEnd();
+
+		// all text
+		Rect r;
+		r.bot = g.yres - 50;
+		r.left = g.xres / 2;
+		r.center = 20;
+		ggprint16(&r, 16, 0x00ffffff, "UNCANNY VALLEY");
+
+		Rect r2;
+		r2.bot = cy;
+		r2.left = cx - 50;
+		r2.center = 0;
+		ggprint12(&r2, 16, 0x00ffffff, "Press 5 to Play");
+
+		glEnable(GL_DEPTH_TEST);
+		glPopAttrib();
+
+	} else {
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		Rect r;
+
+		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+		//3D mode
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		gluPerspective(45.0f, g.aspectRatio, 0.5f, 1000.0f);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+		//for documentation...
+		Vec up = { 0.0, 1.0, 0.0 };
+		gluLookAt(
+			g.camera.position[0], g.camera.position[1], g.camera.position[2],
+			g.camera.position[0]+g.camera.direction[0],
+			g.camera.position[1]+g.camera.direction[1],
+			g.camera.position[2]+g.camera.direction[2],
+			up[0], up[1], up[2]);
+		glLightfv(GL_LIGHT0, GL_POSITION, g.lightPosition);
+
+			// We set the light in eye coordinates so it always follows the camera exactly.
+			// Push/pop so we don't disturb the modelview used for world drawing.
+			glPushMatrix();
+			glLoadIdentity(); // now coordinates are eye coords
+
+			// place the flashlight at the eye origin
+			GLfloat flashlightPos_eye[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+			// in eye coords the camera looks down -Z
+			GLfloat flashlightDir_eye[3] = { 0.0f, 0.0f, -1.0f };
+
+			// Apply to LIGHT1
+			glLightfv(GL_LIGHT1, GL_POSITION, flashlightPos_eye);
+			glLightfv(GL_LIGHT1, GL_SPOT_DIRECTION, flashlightDir_eye);
+			glLightf(GL_LIGHT1, GL_SPOT_CUTOFF, 25.0f);      // cone angle
+			glLightf(GL_LIGHT1, GL_SPOT_EXPONENT, 50.0f);    // concentration
+
+			glLightf(GL_LIGHT1, GL_CONSTANT_ATTENUATION, 1.0f);
+			glLightf(GL_LIGHT1, GL_LINEAR_ATTENUATION, 0.01f);
+			glLightf(GL_LIGHT1, GL_QUADRATIC_ATTENUATION, 0.001f);
+
+			// Make sure LIGHT1 is enabled
+			glEnable(GL_LIGHT1);
+
+			glPopMatrix();
+		
+		drawHallway();
+		enemy.draw();
+		
+		//switch to 2D mode
+		glViewport(0, 0, g.xres, g.yres);
+		glMatrixMode(GL_MODELVIEW);   glLoadIdentity();
 		glMatrixMode (GL_PROJECTION); glLoadIdentity();
 		gluOrtho2D(0, g.xres, 0, g.yres);
 		glPushAttrib(GL_ENABLE_BIT);
 		glDisable(GL_LIGHTING);
-		Rect r;
-		r.bot = g.yres - 30;
-		r.left = g.xres / 2;
-		r.center = 20;
-		ggprint16(&r, 16, 0x00ffffff, "UNCANNY VALLEY");
-		r.bot = g.yres - 450;
-		ggprint12(&r, 16, 0x00ffffff, "Press 4 to Skip");
+		r.bot = g.yres - 20;
+		r.left = 10;
+		r.center = 0;
+		ggprint8b(&r, 16, 0x00887766, "UNCANNY VALLEY");
+		ggprint8b(&r, 16, 0x00ff00ff, "use WASD to MOVE");
+		ggprint8b(&r, 16, 0x00ff00ff, "use SPACE to JUMP");
+		ggprint8b(&r, 16, 0x00ff00ff, "use ARROW KEYS to LOOK AROUND");
+		ggprint8b(&r, 16, 0x0000ff00, "FPS: %i", g.fps);
 		glPopAttrib();
-		//return;
-	} else {
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	Rect r;
-
-
-
-	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-	//3D mode
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	gluPerspective(45.0f, g.aspectRatio, 0.5f, 1000.0f);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	//for documentation...
-	Vec up = { 0.0, 1.0, 0.0 };
-	gluLookAt(
-        g.camera.position[0], g.camera.position[1], g.camera.position[2],
-        g.camera.position[0]+g.camera.direction[0],
-        g.camera.position[1]+g.camera.direction[1],
-        g.camera.position[2]+g.camera.direction[2],
-        up[0], up[1], up[2]);
-      glLightfv(GL_LIGHT0, GL_POSITION, g.lightPosition);
-
-        // We set the light in eye coordinates so it always follows the camera exactly.
-        // Push/pop so we don't disturb the modelview used for world drawing.
-        glPushMatrix();
-        glLoadIdentity(); // now coordinates are eye coords
-
-        // place the flashlight at the eye origin
-        GLfloat flashlightPos_eye[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-        // in eye coords the camera looks down -Z
-        GLfloat flashlightDir_eye[3] = { 0.0f, 0.0f, -1.0f };
-
-        // Apply to LIGHT1
-        glLightfv(GL_LIGHT1, GL_POSITION, flashlightPos_eye);
-        glLightfv(GL_LIGHT1, GL_SPOT_DIRECTION, flashlightDir_eye);
-        glLightf(GL_LIGHT1, GL_SPOT_CUTOFF, 25.0f);      // cone angle
-        glLightf(GL_LIGHT1, GL_SPOT_EXPONENT, 50.0f);    // concentration
-
-        glLightf(GL_LIGHT1, GL_CONSTANT_ATTENUATION, 1.0f);
-        glLightf(GL_LIGHT1, GL_LINEAR_ATTENUATION, 0.01f);
-        glLightf(GL_LIGHT1, GL_QUADRATIC_ATTENUATION, 0.001f);
-
-        // Make sure LIGHT1 is enabled
-        glEnable(GL_LIGHT1);
-
-        glPopMatrix();
-    
-
-	drawHallway();
-  enemy.draw();
-	
-	//switch to 2D mode
-	glViewport(0, 0, g.xres, g.yres);
-	glMatrixMode(GL_MODELVIEW);   glLoadIdentity();
-	glMatrixMode (GL_PROJECTION); glLoadIdentity();
-	gluOrtho2D(0, g.xres, 0, g.yres);
-	glPushAttrib(GL_ENABLE_BIT);
-	glDisable(GL_LIGHTING);
-	r.bot = g.yres - 20;
-	r.left = 10;
-	r.center = 0;
-	ggprint8b(&r, 16, 0x00887766, "UNCANNY VALLEY");
-	ggprint8b(&r, 16, 0x00ff00ff, "use WASD to MOVE");
-  	ggprint8b(&r, 16, 0x00ff00ff, "use SPACE to JUMP");
-	ggprint8b(&r, 16, 0x00ff00ff, "use ARROW KEYS to LOOK AROUND");
-	ggprint8b(&r, 16, 0x0000ff00, "FPS: %i", g.fps);
-	glPopAttrib();
+	}
 }
-}
-
-/*
-void screenShot()
-{
-    //A capture of the OpenGL window client area.
-    static int inc = 0;
-    //Get pixels...
-    unsigned char *data = new unsigned char [g.xres * g.yres * 3];
-    glReadPixels(0, 0, g.xres, g.yres, GL_RGB, GL_UNSIGNED_BYTE, data);
-    //Write a PPM file...
-    char ts[256], tj[256];
-    sprintf(ts, "./images/img%03i.ppm", inc);
-    sprintf(tj, "./images/img%03i.jpg", inc);
-    ++inc;
-    FILE *fpo = fopen(ts, "w");
-    fprintf(fpo, "P6\n");
-    fprintf(fpo, "%i %i\n", g.xres, g.yres);
-    fprintf(fpo, "255\n");
-    //Image is upside-down.
-    //Go backwards a row at a time...
-    unsigned char *p = data;
-    p = p + ((g.yres-1) * g.xres * 3);
-    unsigned char *start = p;
-    for (int i=0; i<g.yres; i++) {
-        for (int j=0; j<g.xres*3; j++) {
-            fprintf(fpo, "%c", *p);
-            ++p;
-        }
-        start = start - (g.xres*3);
-        p = start;
-    }
-    fclose(fpo);
-    delete [] data;
-    char t2[1024];
-    sprintf(t2, "convert %s %s", ts, tj);
-    system(t2);
-    unlink(ts);
-}
-*/
