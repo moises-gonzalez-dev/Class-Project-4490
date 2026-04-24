@@ -167,6 +167,8 @@ public:
     }
 
     void update(Camera &cam) {
+
+      
         float dx = cam.position[0] - pos[0];
         float dz = cam.position[2] - pos[2];
 
@@ -196,18 +198,52 @@ public:
         glTranslatef(pos[0], pos[1], pos[2]);
         glRotatef(yaw, 0.0f, 1.0f, 0.0f);
 
-        // BODY
-        glColor3ub(120,120,120);
+        // --- HORROR DISTORTION (controlled, readable) ---
+        float t = (float)clock() * 0.0006f;  // MUCH slower
+
+        // subtle breathing instead of wild scaling
+        float stretchY = 1.0f + sinf(t) * 0.15f;
+        float squashX  = 1.0f - sinf(t) * 0.08f;
+        float squashZ  = 1.0f + cosf(t * 0.8f) * 0.05f;
+
+        // very slight instability (barely noticeable but creepy)
+        glRotatef(sinf(t * 1.2f) * 2.5f, 1, 0, 0);
+        glRotatef(cosf(t * 1.0f) * 2.0f, 0, 0, 1);
+
+        // apply scaling
+        glScalef(squashX, stretchY, squashZ);
+
+        // --- BODY (elongated, unnatural) ---
+        glColor3ub(90, 90, 90);
         glPushMatrix();
-        glTranslatef(0.0f,2.5f,0.0f);
-        cube(1.5f,3.0f,1.0f);
+
+        // slight sway offset so it doesn't feel rigid
+        float sway = sinf(t * 3.0f) * 0.3f;
+
+        glTranslatef(sway, 2.8f, 0.0f);
+
+        // taller + thinner body
+        cube(1.0f, 4.5f, 0.8f);
+
         glPopMatrix();
 
-        // HEAD
-        glColor3ub(120,120,120);
+
+        // --- HEAD (too small + jittery = uncanny) ---
+        glColor3ub(110, 110, 110);
         glPushMatrix();
-        glTranslatef(0.0f,4.5f,0.0f);
-        cube(1.2f,1.2f,1.2f);
+
+        // jitter makes it feel alive
+        float jitterX = sinf(t * 3.0f) * 0.03f;
+        float jitterY = cosf(t * 2.5f) * 0.03f;
+
+        glTranslatef(jitterX, 5.2f + jitterY, 0.0f);
+
+        // slight independent rotation (VERY important)
+        glRotatef(sinf(t * 5.0f) * 10.0f, 0, 1, 0);
+
+        // smaller head = unsettling proportions
+        cube(0.9f, 0.9f, 0.9f);
+
         glPopMatrix();
 
         // EYES
@@ -237,35 +273,6 @@ public:
         glPopMatrix();
 
         glPopAttrib();
-
-        // LEFT ARM
-        glColor3ub(120,120,120);
-        glPushMatrix();
-        glTranslatef(-1.2f,2.8f,0.0f);
-        glRotatef(90.0f,1.0f,0.0f,0.0f);
-        tube(10,0.2f,2.0f);
-        glPopMatrix();
-
-        // RIGHT ARM
-        glPushMatrix();
-        glTranslatef(1.2f,2.8f,0.0f);
-        glRotatef(90.0f,1.0f,0.0f,0.0f);
-        tube(10,0.2f,2.0f);
-        glPopMatrix();
-
-        // LEFT LEG
-        glPushMatrix();
-        glTranslatef(-0.4f,0.8f,0.0f);
-        glRotatef(90.0f,1.0f,0.0f,0.0f);
-        tube(10,0.3f,2.0f);
-        glPopMatrix();
-
-        // RIGHT LEG
-        glPushMatrix();
-        glTranslatef(0.4f,0.8f,0.0f);
-        glRotatef(90.0f,1.0f,0.0f,0.0f);
-        tube(10,0.3f,2.0f);
-        glPopMatrix();
 
         glPopMatrix();
     }
