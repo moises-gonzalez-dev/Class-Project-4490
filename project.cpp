@@ -23,6 +23,41 @@
 
 Image scary_face("scary_face.png");
 
+// ------------------------------------------------------------
+// Room bounds and pillar collision helpers
+// This matches your geometry room:
+// roomSize = 120.0f, centered at origin
+// pillars are placed on a grid inside it.
+// ------------------------------------------------------------
+static const float ROOM_SIZE   = 120.0f;
+static const float ROOM_HALF    = ROOM_SIZE * 0.5f;
+static const float ROOM_HEIGHT  = 10.0f;
+static const int   ROOM_GRID    = 12;
+static const float PLAYER_RADIUS = 0.85f;
+
+static bool playerHitsPillar(float x, float z)
+{
+    const float cell = ROOM_SIZE / (float)ROOM_GRID;
+    const float half = ROOM_HALF;
+
+    // Pillars are at odd grid locations:
+    // x,z = -50, -30, -10, 10, 30, 50
+    // Pillar size = cell * 0.3f, so half-size = 1.5
+    const float pillarHalf = (cell * 0.3f * 0.5f) + PLAYER_RADIUS;
+
+    for (int gx = 1; gx < ROOM_GRID; gx += 2) {
+        for (int gz = 1; gz < ROOM_GRID; gz += 2) {
+            float cx = -half + gx * cell;
+            float cz = -half + gz * cell;
+
+            if (fabs(x - cx) < pillarHalf && fabs(z - cz) < pillarHalf) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 class Global {
 public:
     int xres, yres;
@@ -36,10 +71,6 @@ public:
     time_t timeStart;
     time_t timeCurrent;
     int fps;
-
-    const float HALLWAY_WIDTH  = 12.0f;
-    const float HALLWAY_HEIGHT = 10.0f;
-    const float HALLWAY_LENGTH = 500.0f;
 
     Global() {
         xres = 800;
@@ -60,14 +91,17 @@ public:
     void physics();
     void render();
 
-    void clampPlayerToHallway(Camera &cam) {
-        float margin = 0.5f;
-        if (cam.position[0] < -HALLWAY_WIDTH + margin) cam.position[0] = -HALLWAY_WIDTH + margin;
-        if (cam.position[0] >  HALLWAY_WIDTH - margin) cam.position[0] =  HALLWAY_WIDTH - margin;
-        if (cam.position[1] < 1.0f)                    cam.position[1] = 1.0f;
-        if (cam.position[1] > HALLWAY_HEIGHT - 1.0f)   cam.position[1] = HALLWAY_HEIGHT - 1.0f;
-        if (cam.position[2] < 0.1f)                    cam.position[2] = 0.1f;
-        if (cam.position[2] > HALLWAY_LENGTH - margin)  cam.position[2] = HALLWAY_LENGTH - margin;
+    void clampPlayerToRoom(Camera &cam) {
+        float margin = 1.0f;
+
+        if (cam.position[0] < -ROOM_HALF + margin) cam.position[0] = -ROOM_HALF + margin;
+        if (cam.position[0] >  ROOM_HALF - margin) cam.position[0] =  ROOM_HALF - margin;
+
+        if (cam.position[1] < 3.0f)                 cam.position[1] = 3.0f;
+        if (cam.position[1] >  ROOM_HEIGHT - 1.0f)  cam.position[1] = ROOM_HEIGHT - 1.0f;
+
+        if (cam.position[2] < -ROOM_HALF + margin) cam.position[2] = -ROOM_HALF + margin;
+        if (cam.position[2] >  ROOM_HALF - margin) cam.position[2] =  ROOM_HALF - margin;
     }
 } g;
 
@@ -217,11 +251,23 @@ void Global::check_mouse(XEvent *e)
             g.camera.position[1] += g.camera.direction[1];
             g.camera.position[2] += g.camera.direction[2];
             if (g.state == 1) g.camera.force[1] += 0.09;
+            clampPlayerToRoom(g.camera);
+            if (playerHitsPillar(g.camera.position[0], g.camera.position[2])) {
+                g.camera.position[0] -= g.camera.direction[0];
+                g.camera.position[1] -= g.camera.direction[1];
+                g.camera.position[2] -= g.camera.direction[2];
+            }
         }
         if (e->xbutton.button == 3) {
             g.camera.position[0] -= g.camera.direction[0];
             g.camera.position[1] -= g.camera.direction[1];
             g.camera.position[2] -= g.camera.direction[2];
+            clampPlayerToRoom(g.camera);
+            if (playerHitsPillar(g.camera.position[0], g.camera.position[2])) {
+                g.camera.position[0] += g.camera.direction[0];
+                g.camera.position[1] += g.camera.direction[1];
+                g.camera.position[2] += g.camera.direction[2];
+            }
         }
     }
     if (savex != e->xbutton.x || savey != e->xbutton.y) {
@@ -257,39 +303,80 @@ int Global::check_keys(XEvent *e)
     }
 
     bool moved = false;
+    const float step = 0.35f;
 
-    if (keys[XK_w]) {
-        g.camera.last_position[0] = g.camera.position[0];
-        g.camera.last_position[1] = g.camera.position[1];
-        g.camera.last_position[2] = g.camera.position[2];
-        g.camera.position[0] += g.camera.direction[0];
-        g.camera.position[1] += g.camera.direction[1];
-        g.camera.position[2] += g.camera.direction[2];
-        if (g.state == 1) g.camera.force[1] += 0.09;
+    // Move in the XZ plane, but only collide with the room bounds and pillars.
+    // No invisible maze-wall collision.
+    if (keys[XK_w] || keys[XK_s] || keys[XK_a] || keys[XK_d]) {
+        float oldX = g.camera.position[0];
+        float oldZ = g.camera.position[2];
+
+        float dx = 0.0f;
+        float dz = 0.0f;
+
+        // forward/back
+        if (keys[XK_w]) {
+            dx += g.camera.direction[0];
+            dz += g.camera.direction[2];
+        }
+        if (keys[XK_s]) {
+            dx -= g.camera.direction[0];
+            dz -= g.camera.direction[2];
+        }
+
+        // strafe left/right using a 2D perpendicular to forward direction
+        float fx = g.camera.direction[0];
+        float fz = g.camera.direction[2];
+        float len = sqrtf(fx * fx + fz * fz);
+        if (len < 0.0001f) len = 1.0f;
+        fx /= len;
+        fz /= len;
+
+        float sx = -fz;
+        float sz = fx;
+
+        if (keys[XK_d]) {
+            dx += sx;
+            dz += sz;
+        }
+        if (keys[XK_a]) {
+            dx -= sx;
+            dz -= sz;
+        }
+
+        dx *= step;
+        dz *= step;
+
+        g.camera.position[0] += dx;
+        g.camera.position[2] += dz;
+
+        clampPlayerToRoom(g.camera);
+
+        if (playerHitsPillar(g.camera.position[0], g.camera.position[2])) {
+            g.camera.position[0] = oldX;
+            g.camera.position[2] = oldZ;
+        }
+
         moved = true;
     }
-    if (keys[XK_s]) {
-        g.camera.last_position[0] = g.camera.position[0];
-        g.camera.last_position[1] = g.camera.position[1];
-        g.camera.last_position[2] = g.camera.position[2];
-        g.camera.position[0] -= g.camera.direction[0];
-        g.camera.position[1] -= g.camera.direction[1];
-        g.camera.position[2] -= g.camera.direction[2];
+
+    if (keys[XK_u]) {
+        g.camera.translate(0.0, 0.2, 0.0);
         moved = true;
     }
-
-    if (keys[XK_d]) { g.camera.moveLeftRight( 1.0); moved = true; }
-    if (keys[XK_a]) { g.camera.moveLeftRight(-1.0); moved = true; }
-
-    if (keys[XK_u])       g.camera.translate(0.0, 0.2, 0.0);
-    if (keys[XK_Shift_L]) g.camera.position[1] -= 0.2;
+    if (keys[XK_Shift_L]) {
+        g.camera.position[1] -= 0.2;
+        moved = true;
+    }
 
     if (keys[XK_Down])  g.camera.lookUpDown(0.1);
     if (keys[XK_Up])    g.camera.lookUpDown(-0.1);
     if (keys[XK_Left])  g.camera.lookLeftRight(0.1);
     if (keys[XK_Right]) g.camera.lookLeftRight(-0.1);
 
-    if (moved) clampPlayerToHallway(g.camera);
+    if (moved) {
+        clampPlayerToRoom(g.camera);
+    }
 
     return 0;
 }

@@ -64,104 +64,132 @@ void tube(int n, float rad, float len)
     glEnd();
 }
 
+// ===== SHARED CONSTANTS (IMPORTANT) =====
+const int GRID = 12;
+const float ROOM_SIZE = 120.0f;
+const float HEIGHT = 10.0f;
+
+float getCellSize() {
+    return ROOM_SIZE / GRID;
+}
+
+// SAME pattern used EVERYWHERE (render + collision)
+int getPattern(int x, int z) {
+    return (x * 13 + z * 7) % 5;
+}
+
+// Convert grid → world position (CENTER of cell)
+void getCellCenter(int x, int z, float &cx, float &cz) {
+    float cell = getCellSize();
+    cx = -ROOM_SIZE/2 + x * cell + cell/2;
+    cz = -ROOM_SIZE/2 + z * cell + cell/2;
+}
+
 void drawHallway()
 {
-    float width  = 12.0f;
-    float height = 10.0f;
-    float length = 500.0f;
+    float cell = getCellSize();
 
-    int tilesX = 10, tilesY = 10, tilesZ = 50;
-    float tileW = (2 * width)  / tilesX;
-    float tileH = height       / tilesY;
-    float tileL = length       / tilesZ;
+    // FLOOR
+    for (int x = 0; x < GRID; x++) {
+        for (int z = 0; z < GRID; z++) {
+            bool even = (x + z) % 2 == 0;
+            glColor3ub(even ? 90 : 120, even ? 90 : 120, even ? 70 : 90);
 
-    // Floor
-    for (int i = 0; i < tilesX; i++) {
-        for (int j = 0; j < tilesZ; j++) {
-            bool even = (i + j) % 2 == 0;
-            glColor3ub(even ? 60 : 100, even ? 60 : 100, even ? 60 : 100);
-            float x0 = -width + i*tileW, x1 = x0+tileW;
-            float z0 = j*tileL,          z1 = z0+tileL;
+            float x0 = -ROOM_SIZE/2 + x * cell;
+            float x1 = x0 + cell;
+            float z0 = -ROOM_SIZE/2 + z * cell;
+            float z1 = z0 + cell;
+
             glBegin(GL_QUADS);
                 glNormal3f(0,1,0);
-                glVertex3f(x0,0,z0); glVertex3f(x1,0,z0);
-                glVertex3f(x1,0,z1); glVertex3f(x0,0,z1);
+                glVertex3f(x0,0,z0);
+                glVertex3f(x1,0,z0);
+                glVertex3f(x1,0,z1);
+                glVertex3f(x0,0,z1);
             glEnd();
         }
     }
 
-    // Ceiling
-    for (int i = 0; i < tilesX; i++) {
-        for (int j = 0; j < tilesZ; j++) {
-            bool even = (i + j) % 2 == 0;
-            glColor3ub(even ? 40 : 80, even ? 40 : 80, even ? 40 : 80);
-            float x0 = -width + i*tileW, x1 = x0+tileW;
-            float z0 = j*tileL,          z1 = z0+tileL;
+    // CEILING
+    for (int x = 0; x < GRID; x++) {
+        for (int z = 0; z < GRID; z++) {
+            glColor3ub(70,70,50);
+
+            float x0 = -ROOM_SIZE/2 + x * cell;
+            float x1 = x0 + cell;
+            float z0 = -ROOM_SIZE/2 + z * cell;
+            float z1 = z0 + cell;
+
             glBegin(GL_QUADS);
                 glNormal3f(0,-1,0);
-                glVertex3f(x0,height,z0); glVertex3f(x1,height,z0);
-                glVertex3f(x1,height,z1); glVertex3f(x0,height,z1);
+                glVertex3f(x0,HEIGHT,z0);
+                glVertex3f(x1,HEIGHT,z0);
+                glVertex3f(x1,HEIGHT,z1);
+                glVertex3f(x0,HEIGHT,z1);
             glEnd();
         }
     }
 
-    // Left wall
-    for (int j = 0; j < tilesZ; j++) {
-        for (int i = 0; i < tilesY; i++) {
-            bool even = (i + j) % 2 == 0;
-            glColor3ub(even ? 60 : 100, even ? 60 : 100, even ? 60 : 100);
-            float y0 = i*tileH, y1 = y0+tileH;
-            float z0 = j*tileL, z1 = z0+tileL;
-            glBegin(GL_QUADS);
-                glNormal3f(1,0,0);
-                glVertex3f(-width,y0,z0); glVertex3f(-width,y0,z1);
-                glVertex3f(-width,y1,z1); glVertex3f(-width,y1,z0);
-            glEnd();
+    // WALLS (MAZE)
+    for (int x = 0; x < GRID; x++) {
+        for (int z = 0; z < GRID; z++) {
+
+            int pattern = getPattern(x,z);
+
+            if (pattern == 0 || pattern == 1) {
+                float cx, cz;
+                getCellCenter(x,z,cx,cz);
+
+                glColor3ub(110,110,80);
+                glPushMatrix();
+                glTranslatef(cx, HEIGHT/2, cz);
+
+                if (pattern == 0)
+                    cube(cell * 0.2f, HEIGHT, cell);
+
+                if (pattern == 1)
+                    cube(cell, HEIGHT, cell * 0.2f);
+
+                glPopMatrix();
+            }
         }
     }
 
-    // Right wall
-    for (int j = 0; j < tilesZ; j++) {
-        for (int i = 0; i < tilesY; i++) {
-            bool even = (i + j) % 2 == 0;
-            glColor3ub(even ? 60 : 100, even ? 60 : 100, even ? 60 : 100);
-            float y0 = i*tileH, y1 = y0+tileH;
-            float z0 = j*tileL, z1 = z0+tileL;
-            glBegin(GL_QUADS);
-                glNormal3f(-1,0,0);
-                glVertex3f(width,y0,z0); glVertex3f(width,y0,z1);
-                glVertex3f(width,y1,z1); glVertex3f(width,y1,z0);
-            glEnd();
+    // PILLARS (FIXED ALIGNMENT BUG HERE)
+    for (int x = 1; x < GRID; x += 2) {
+        for (int z = 1; z < GRID; z += 2) {
+
+            float cx, cz;
+            getCellCenter(x,z,cx,cz);
+
+            glColor3ub(130,130,90);
+            glPushMatrix();
+            glTranslatef(cx, HEIGHT/2, cz); // ✅ FIXED (was misaligned before)
+            cube(cell * 0.3f, HEIGHT, cell * 0.3f);
+            glPopMatrix();
         }
     }
 
-    // Back wall (z=0)
-    for (int i = 0; i < tilesX; i++) {
-        for (int j = 0; j < tilesY; j++) {
-            bool even = (i + j) % 2 == 0;
-            glColor3ub(even ? 80 : 120, even ? 80 : 120, even ? 80 : 120);
-            float x0 = -width + i*tileW, x1 = x0+tileW;
-            float y0 = j*tileH,          y1 = y0+tileH;
-            glBegin(GL_QUADS);
-                glNormal3f(0,0,1);
-                glVertex3f(x0,y0,0); glVertex3f(x1,y0,0);
-                glVertex3f(x1,y1,0); glVertex3f(x0,y1,0);
-            glEnd();
-        }
-    }
+    // OUTER WALLS
+    glColor3ub(100,100,70);
 
-    // Front wall (z=length)
-    for (int i = 0; i < tilesX; i++) {
-        for (int j = 0; j < tilesY; j++) {
-            bool even = (i + j) % 2 == 0;
-            glColor3ub(even ? 80 : 120, even ? 80 : 120, even ? 80 : 120);
-            float x0 = -width + i*tileW, x1 = x0+tileW;
-            float y0 = j*tileH,          y1 = y0+tileH;
-            glBegin(GL_QUADS);
-                glNormal3f(0,0,-1);
-                glVertex3f(x0,y0,length); glVertex3f(x1,y0,length);
-                glVertex3f(x1,y1,length); glVertex3f(x0,y1,length);
-            glEnd();
-        }
-    }
+    glPushMatrix();
+    glTranslatef(0, HEIGHT/2, -ROOM_SIZE/2);
+    cube(ROOM_SIZE, HEIGHT, 1.0f);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslatef(0, HEIGHT/2, ROOM_SIZE/2);
+    cube(ROOM_SIZE, HEIGHT, 1.0f);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslatef(-ROOM_SIZE/2, HEIGHT/2, 0);
+    cube(1.0f, HEIGHT, ROOM_SIZE);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslatef(ROOM_SIZE/2, HEIGHT/2, 0);
+    cube(1.0f, HEIGHT, ROOM_SIZE);
+    glPopMatrix();
 }
