@@ -20,6 +20,7 @@
 #include "camera.h"
 #include "enemy.h"
 #include "geometry.h"
+#include "sound.h"
 
 Image scary_face("scary_face.png");
 
@@ -71,7 +72,8 @@ public:
     time_t timeStart;
     time_t timeCurrent;
     int fps;
-
+    int intro_sound_played;
+    int game_sound_played;
     Global() {
         xres = 800;
         yres = 600;
@@ -82,6 +84,8 @@ public:
         fps = 0;
         start_screen = 1;
         menu_screen = 0;
+        intro_sound_played = 0;
+        game_sound_played = 0;
     }
 
     void init_opengl();
@@ -183,6 +187,7 @@ public:
 int main()
 {
     g.init_opengl();
+    sound_init();
     scary_face.upload();
     srand(time(NULL));
     int done = 0;
@@ -209,6 +214,7 @@ int main()
         x11.swapBuffers();
     }
     cleanup_fonts();
+    sound_shutdown();
     return 0;
 }
 
@@ -257,6 +263,11 @@ void Global::check_mouse(XEvent *e)
                 g.camera.position[1] -= g.camera.direction[1];
                 g.camera.position[2] -= g.camera.direction[2];
             }
+            printf("savex: %i savey: %i\n", savex, savey);
+            if (e->xbutton.x >= 225 && e->xbutton.x <= 416 && e->xbutton.y >= 213 && e->xbutton.y <= 265 && g.menu_screen == 1 && g.start_screen == 0) {
+                g.menu_screen = 0;
+
+            }
         }
         if (e->xbutton.button == 3) {
             g.camera.position[0] -= g.camera.direction[0];
@@ -289,7 +300,7 @@ int Global::check_keys(XEvent *e)
         keys[key] = true;
         switch (key) {
             case XK_4:     g.start_screen = 0; g.menu_screen = 1; break;
-            case XK_5:     g.menu_screen = 0; break;
+            //case XK_5:     g.menu_screen = 0; break;
             case XK_space:
                 if (g.state == 1 && g.camera.position[1] <= 3.2)
                     g.camera.force[1] += 0.2;
@@ -414,7 +425,13 @@ void Global::render()
         glDisable(GL_LIGHTING);
 
         if (elapsed > 5.0) {
-            float t = (float)(elapsed - 5.0) / 4.0f;
+            if (!g.intro_sound_played) {
+                alSourcei(srcIntro, AL_LOOPING, AL_FALSE);
+                alSourcePlay(srcIntro);
+                g.intro_sound_played = 1;
+            }
+
+            float t = (float)(elapsed - 5.0) / 1.5f;
             if (t > 1.0f) t = 1.0f;
             float maxW = 300.0f, maxH = 300.0f;
             float w = 10.0f + (maxW - 10.0f) * t;
@@ -443,10 +460,21 @@ void Global::render()
         glPopAttrib();
 
     } else if (g.start_screen) {
+        if (g.intro_sound_played == 1) {
+            alSourceStop(srcIntro);
+            g.intro_sound_played = 0;
+        }
+        alSourceStop(srcIntro);
         g.start_screen = 0;
         g.menu_screen  = 1;
 
     } else if (g.menu_screen) {
+        if (!g.game_sound_played) {
+            alSourcei(srcGame, AL_LOOPING, AL_TRUE);
+            alSourcePlay(srcGame);
+            g.game_sound_played = 1;
+        }
+
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
         glViewport(0, 0, g.xres, g.yres);
@@ -477,13 +505,18 @@ void Global::render()
         r.bot = g.yres - 50; r.left = g.xres / 2; r.center = 20;
         ggprint16(&r, 16, 0x00ffffff, "UNCANNY VALLEY");
         Rect r2;
-        r2.bot = cy; r2.left = cx - 50; r2.center = 0;
-        ggprint12(&r2, 16, 0x00ffffff, "Press 5 to Play");
+        r2.bot = cy; r2.left = cx; r2.center = 0;
+        ggprint12(&r2, 16, 0x00ffffff, "Play");
 
         glEnable(GL_DEPTH_TEST);
         glPopAttrib();
 
     } else {
+        if (g.game_sound_played == 0) {
+            alSourcei(srcGame, AL_LOOPING, AL_TRUE);
+            alSourcePlay(srcGame);
+            g.game_sound_played = 1;
+        }
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
         glMatrixMode(GL_PROJECTION); glLoadIdentity();
