@@ -12,10 +12,13 @@ public:
     Vec vel;
 
     Camera() {
-        VecMake(0, 1, 8, position);
-        VecMake(0, 25, 22, position);
-        VecMake(0, 0, -1, direction);
-    }
+    VecMake(0, 3, 0, position);   // start inside room, Y=3 is ground level
+    VecMake(0, 0, -1, direction);
+    VecMake(0, 0, 0, force);
+    VecMake(0, 0, 0, vel);
+    VecMake(0, 0, 0, last_position);
+}
+
 
     void translate(float x, float y, float z) {
         position[0] += x;

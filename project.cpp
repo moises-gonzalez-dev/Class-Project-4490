@@ -36,28 +36,45 @@ static const float ROOM_HEIGHT  = 10.0f;
 static const int   ROOM_GRID    = 12;
 static const float PLAYER_RADIUS = 0.85f;
 
+
+
 static bool playerHitsPillar(float x, float z)
 {
     const float cell = ROOM_SIZE / (float)ROOM_GRID;
     const float half = ROOM_HALF;
-
-    // Pillars are at odd grid locations:
-    // x,z = -50, -30, -10, 10, 30, 50
-    // Pillar size = cell * 0.3f, so half-size = 1.5
     const float pillarHalf = (cell * 0.3f * 0.5f) + PLAYER_RADIUS;
 
+    // Match geometry.cpp pillar pattern exactly (odd grid positions)
     for (int gx = 1; gx < ROOM_GRID; gx += 2) {
         for (int gz = 1; gz < ROOM_GRID; gz += 2) {
-            float cx = -half + gx * cell;
-            float cz = -half + gz * cell;
-
-            if (fabs(x - cx) < pillarHalf && fabs(z - cz) < pillarHalf) {
+            float cx = -half + gx * cell + cell * 0.5f;  // match getCellCenter
+            float cz = -half + gz * cell + cell * 0.5f;
+            if (fabs(x - cx) < pillarHalf && fabs(z - cz) < pillarHalf)
                 return true;
+        }
+    }
+
+    // Also check pattern==0 and pattern==1 walls from geometry
+    const float wallHalf = (cell * 0.5f) + PLAYER_RADIUS;
+    const float wallThin = (cell * 0.1f) + PLAYER_RADIUS;
+    for (int gx = 0; gx < ROOM_GRID; gx++) {
+        for (int gz = 0; gz < ROOM_GRID; gz++) {
+            int pattern = (gx * 13 + gz * 7) % 5;
+            if (pattern == 0 || pattern == 1) {
+                float cx = -half + gx * cell + cell * 0.5f;
+                float cz = -half + gz * cell + cell * 0.5f;
+                float hx = (pattern == 0) ? wallThin : wallHalf;
+                float hz = (pattern == 0) ? wallHalf  : wallThin;
+                if (fabs(x - cx) < hx && fabs(z - cz) < hz)
+                    return true;
             }
         }
     }
     return false;
 }
+
+
+
 
 class Global {
 public:
@@ -104,19 +121,20 @@ public:
     void physics();
     void render();
 
-    void clampPlayerToRoom(Camera &cam) {
-        float margin = 1.0f;
+    //changed
 
-        if (cam.position[0] < -ROOM_HALF + margin) cam.position[0] = -ROOM_HALF + margin;
-        if (cam.position[0] >  ROOM_HALF - margin) cam.position[0] =  ROOM_HALF - margin;
+void clampPlayerToRoom(Camera &cam) {
+    float margin = PLAYER_RADIUS + 0.5f;
+    if (cam.position[0] < -ROOM_HALF + margin) cam.position[0] = -ROOM_HALF + margin;
+    if (cam.position[0] >  ROOM_HALF - margin) cam.position[0] =  ROOM_HALF - margin;
+    if (cam.position[1] < 3.0f)                cam.position[1] = 3.0f;
+    if (cam.position[1] >  ROOM_HEIGHT - 1.0f) cam.position[1] = ROOM_HEIGHT - 1.0f;
+    if (cam.position[2] < -ROOM_HALF + margin) cam.position[2] = -ROOM_HALF + margin;
+    if (cam.position[2] >  ROOM_HALF - margin) cam.position[2] =  ROOM_HALF - margin;
+}
 
-        if (cam.position[1] < 3.0f)                 cam.position[1] = 3.0f;
-        if (cam.position[1] >  ROOM_HEIGHT - 1.0f)  cam.position[1] = ROOM_HEIGHT - 1.0f;
 
-        if (cam.position[2] < -ROOM_HALF + margin) cam.position[2] = -ROOM_HALF + margin;
-        if (cam.position[2] >  ROOM_HALF - margin) cam.position[2] =  ROOM_HALF - margin;
-    }
-} g;
+}g;
 
 class X11_wrapper {
 private:
@@ -172,14 +190,16 @@ public:
         if (xce.width != g.xres || xce.height != g.yres)
             reshape_window(xce.width, xce.height);
     }
+    //added
     void reshape_window(int width, int height) {
-        setup_screen_res(width, height);
-        glViewport(0, 0, (GLint)width, (GLint)height);
-        glMatrixMode(GL_PROJECTION); glLoadIdentity();
-        glMatrixMode(GL_MODELVIEW);  glLoadIdentity();
-        glOrtho(0, g.xres, 0, g.yres, -1, 1);
-        set_title();
-    }
+    setup_screen_res(width, height);
+    glViewport(0, 0, (GLint)width, (GLint)height);
+    glMatrixMode(GL_PROJECTION); glLoadIdentity();
+    gluPerspective(45.0f, g.aspectRatio, 0.5f, 1000.0f);
+    glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+    set_title();
+}
+        
     void set_title() {
         XMapWindow(dpy, win);
         XStoreName(dpy, win, "UNCANNY VALLEY");
@@ -398,11 +418,26 @@ int Global::check_keys(XEvent *e)
 
         clampPlayerToRoom(g.camera);
 
+        // Try separating axes so player slides along pillar instead of getting stuck
+
+if (playerHitsPillar(g.camera.position[0], g.camera.position[2])) {
+    // try sliding along X only
+    g.camera.position[0] = oldX + dx;
+    g.camera.position[2] = oldZ;
+    if (playerHitsPillar(g.camera.position[0], g.camera.position[2])) {
+        // try sliding along Z only
+        g.camera.position[0] = oldX;
+        g.camera.position[2] = oldZ + dz;
         if (playerHitsPillar(g.camera.position[0], g.camera.position[2])) {
+            // fully blocked
             g.camera.position[0] = oldX;
             g.camera.position[2] = oldZ;
         }
+    }
+}
 
+
+////////////
         moved = true;
     }
 
@@ -442,6 +477,17 @@ void Global::physics()
         }
     }
     enemy.update(camera);
+
+// Exit door on positive Z wall, centered
+const float EXIT_X  = 0.0f;
+const float EXIT_Z  = ROOM_HALF - 2.0f;
+const float EXIT_RAD = 4.0f;
+float ex = camera.position[0] - EXIT_X;
+float ez = camera.position[2] - EXIT_Z;
+if (sqrtf(ex*ex + ez*ez) < EXIT_RAD && !g.win_screen && !g.lose_screen) {
+    g.win_screen = 1;
+}
+
 }
 
 void Global::render()
@@ -691,6 +737,20 @@ void Global::render()
         glPopMatrix();
 
         drawHallway();
+        
+// Green glowing exit door on far Z wall
+glDisable(GL_LIGHTING);
+glDisable(GL_TEXTURE_2D);
+glColor4f(0.0f, 1.0f, 0.3f, 1.0f);
+glBegin(GL_QUADS);
+    glVertex3f(-4.0f, 0.0f,  ROOM_HALF - 2.0f);
+    glVertex3f( 4.0f, 0.0f,  ROOM_HALF - 2.0f);
+    glVertex3f( 4.0f, 8.0f,  ROOM_HALF - 2.0f);
+    glVertex3f(-4.0f, 8.0f,  ROOM_HALF - 2.0f);
+glEnd();
+glEnable(GL_LIGHTING);
+glEnable(GL_TEXTURE_2D);
+
         enemy.draw();
 
         // HUD (2D overlay)
@@ -703,7 +763,7 @@ void Global::render()
 
         Rect r;
         r.bot = g.yres - 20; r.left = 10; r.center = 0;
-        ggprint8b(&r, 16, 0x00887766, "UNCANNY VALLEY");
+        ggprint8b(&r, 16, 0x00887766, "UNCANNY Hallway");
         ggprint8b(&r, 16, 0x00ff00ff, "use WASD to MOVE");
         ggprint8b(&r, 16, 0x00ff00ff, "use SPACE to JUMP");
         ggprint8b(&r, 16, 0x00ff00ff, "use ARROW KEYS to LOOK AROUND");
