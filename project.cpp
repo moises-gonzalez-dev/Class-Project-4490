@@ -69,11 +69,16 @@ public:
     int state;
     int start_screen;
     int menu_screen;
+    int lose_screen;
+    int win_screen;
     time_t timeStart;
     time_t timeCurrent;
+    time_t deathtime;
     int fps;
     int intro_sound_played;
     int game_sound_played;
+    int start_countdown;
+    double remaining;
     Global() {
         xres = 800;
         yres = 600;
@@ -84,8 +89,12 @@ public:
         fps = 0;
         start_screen = 1;
         menu_screen = 0;
+        lose_screen = 0;
+        win_screen = 0;
         intro_sound_played = 0;
         game_sound_played = 0;
+        start_countdown = 0;
+        remaining = 0.0;
     }
 
     void init_opengl();
@@ -184,6 +193,7 @@ public:
     void swapBuffers() { glXSwapBuffers(dpy, win); }
 } x11;
 
+
 int main()
 {
     g.init_opengl();
@@ -264,9 +274,16 @@ void Global::check_mouse(XEvent *e)
                 g.camera.position[2] -= g.camera.direction[2];
             }
             printf("savex: %i savey: %i\n", savex, savey);
-            if (e->xbutton.x >= 225 && e->xbutton.x <= 416 && e->xbutton.y >= 213 && e->xbutton.y <= 265 && g.menu_screen == 1 && g.start_screen == 0) {
+            if (e->xbutton.x >= 225 && e->xbutton.x <= 416 && e->xbutton.y >= 213 
+                    && e->xbutton.y <= 265 && g.menu_screen == 1 && g.start_screen == 0) {
                 g.menu_screen = 0;
-
+            }
+            if (e->xbutton.x >= 225 && e->xbutton.x <= 416 && e->xbutton.y >= 213 
+                    && e->xbutton.y <= 265 && (g.lose_screen == 1 || g.win_screen == 1) && g.start_screen == 0) {
+                g.menu_screen = 1;
+                g.lose_screen = 0;
+                g.win_screen = 0;
+                g.start_countdown = 0;
             }
         }
         if (e->xbutton.button == 3) {
@@ -299,13 +316,31 @@ int Global::check_keys(XEvent *e)
         int key = (XLookupKeysym(&e->xkey, 0) & 0x0000ffff);
         keys[key] = true;
         switch (key) {
-            case XK_4:     g.start_screen = 0; g.menu_screen = 1; break;
-            //case XK_5:     g.menu_screen = 0; break;
+            case XK_2:
+                g.win_screen = 1;
+                break;
+            case XK_3:
+                g.deathtime = time(nullptr) + 10;
+                g.start_countdown = 1;
+                printf("XK_3: g.deathtime=%ld now=%ld diff=%ld\n", 
+                    (long)g.deathtime, (long)time(nullptr),
+                    (long)g.deathtime - (long)time(nullptr));
+                break;
+            case XK_4:     
+                if (g.start_screen == 1) {
+                    g.start_screen = 0; 
+                    g.menu_screen = 1; 
+                }
+                break;
+            //case XK_5:     
+            //    g.menu_screen = 0; 
+            //    break;
             case XK_space:
                 if (g.state == 1 && g.camera.position[1] <= 3.2)
                     g.camera.force[1] += 0.2;
                 break;
-            case XK_Escape: return 1;
+            case XK_Escape: 
+                return 1;
         }
     }
     if (e->type == KeyRelease) {
@@ -461,7 +496,7 @@ void Global::render()
 
     } else if (g.start_screen) {
         if (g.intro_sound_played == 1) {
-            alSourceStop(srcIntro);
+            //alSourceStop(srcIntro);
             g.intro_sound_played = 0;
         }
         alSourceStop(srcIntro);
@@ -470,8 +505,8 @@ void Global::render()
 
     } else if (g.menu_screen) {
         if (!g.game_sound_played) {
-            alSourcei(srcGame, AL_LOOPING, AL_TRUE);
-            alSourcePlay(srcGame);
+            alSourcei(srcMenu, AL_LOOPING, AL_TRUE);
+            alSourcePlay(srcMenu);
             g.game_sound_played = 1;
         }
 
@@ -511,12 +546,120 @@ void Global::render()
         glEnable(GL_DEPTH_TEST);
         glPopAttrib();
 
+    } else if (g.win_screen) {
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+        glViewport(0, 0, g.xres, g.yres);
+        glMatrixMode(GL_PROJECTION); glLoadIdentity();
+        gluOrtho2D(0, g.xres, 0, g.yres);
+        glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+        glPushAttrib(GL_ENABLE_BIT);
+        glDisable(GL_LIGHTING);
+
+        int bw = 200, bh = 60;
+        int cx = g.xres / 2, cy = g.yres / 2;
+        glDisable(GL_DEPTH_TEST);
+
+        glColor4f(0.1f, 0.1f, 0.1f, 0.85f);
+        glBegin(GL_QUADS);
+            glVertex2f(cx-bw/2, cy-bh/2); glVertex2f(cx+bw/2, cy-bh/2);
+            glVertex2f(cx+bw/2, cy+bh/2); glVertex2f(cx-bw/2, cy+bh/2);
+        glEnd();
+
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glLineWidth(2.0f);
+        glBegin(GL_LINE_LOOP);
+            glVertex2f(cx-bw/2, cy-bh/2); glVertex2f(cx+bw/2, cy-bh/2);
+            glVertex2f(cx+bw/2, cy+bh/2); glVertex2f(cx-bw/2, cy+bh/2);
+        glEnd();
+
+        Rect r;
+        r.bot = g.yres - 150; 
+        r.left = g.xres / 2; 
+        r.center = 20;
+        ggprint16(&r, 16, 0x00ffffff, "Congratulations, You Escaped!");
+        ggprint16(&r, 16, 0x00ffffff, "You are now Free From The Uncanny Valley");
+
+        Rect r2;
+        r2.bot = cy; 
+        r2.left = cx; 
+        r2.center = 20;
+        ggprint12(&r2, 16, 0x00ffffff, "Back to Menu");
+
+        glEnable(GL_DEPTH_TEST);
+        glPopAttrib(); 
+    } else if(g.lose_screen) {
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+        glViewport(0, 0, g.xres, g.yres);
+        glMatrixMode(GL_PROJECTION); glLoadIdentity();
+        gluOrtho2D(0, g.xres, 0, g.yres);
+        glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+        glPushAttrib(GL_ENABLE_BIT);
+        glDisable(GL_LIGHTING);
+
+        int bw = 200, bh = 60;
+        int cx = g.xres / 2, cy = g.yres / 2;
+        glDisable(GL_DEPTH_TEST);
+
+        glColor4f(0.1f, 0.1f, 0.1f, 0.85f);
+        glBegin(GL_QUADS);
+            glVertex2f(cx-bw/2, cy-bh/2); glVertex2f(cx+bw/2, cy-bh/2);
+            glVertex2f(cx+bw/2, cy+bh/2); glVertex2f(cx-bw/2, cy+bh/2);
+        glEnd();
+
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glLineWidth(2.0f);
+        glBegin(GL_LINE_LOOP);
+            glVertex2f(cx-bw/2, cy-bh/2); glVertex2f(cx+bw/2, cy-bh/2);
+            glVertex2f(cx+bw/2, cy+bh/2); glVertex2f(cx-bw/2, cy+bh/2);
+        glEnd();
+
+        Rect r;
+        r.bot = g.yres - 150; 
+        r.left = g.xres / 2; 
+        r.center = 20;
+        ggprint16(&r, 16, 0x00ffffff, "The Monster Caught You");
+        ggprint16(&r, 16, 0x00ffffff, "You Have Failed To Escape");
+
+        Rect r2;
+        r2.bot = cy; 
+        r2.left = cx; 
+        r2.center = 20;
+        ggprint12(&r2, 16, 0x00ffffff, "Back to Menu");
+
+        glEnable(GL_DEPTH_TEST);
+        glPopAttrib();
+
     } else {
         if (g.game_sound_played == 0) {
             alSourcei(srcGame, AL_LOOPING, AL_TRUE);
             alSourcePlay(srcGame);
             g.game_sound_played = 1;
         }
+        if (g.start_countdown == 0) {
+            g.deathtime = time(nullptr) + 120.0f;
+            g.start_countdown = 1;
+            printf("g.deathtime set: %ld, now: %ld, diff: %ld\n", 
+           (long)g.deathtime, (long)time(nullptr), 
+           (long)g.deathtime - (long)time(nullptr));
+        } else {
+            time_t current_Time = time(nullptr);
+            g.remaining = difftime(g.deathtime, current_Time);
+            /*
+            if (g.remaining < 30) {
+                alSourceStop(srcGame);
+                alSourcei(srcNotime, AL_LOOPING, AL_TRUE);
+                alSourcePlay(srcNotime);
+            }
+                */
+            if (g.remaining <= 0) {
+                g.remaining = 0;
+                g.lose_screen = 1;
+                alSourceStop(srcNotime);
+            }
+        }
+
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
         glMatrixMode(GL_PROJECTION); glLoadIdentity();
@@ -565,6 +708,10 @@ void Global::render()
         ggprint8b(&r, 16, 0x00ff00ff, "use SPACE to JUMP");
         ggprint8b(&r, 16, 0x00ff00ff, "use ARROW KEYS to LOOK AROUND");
         ggprint8b(&r, 16, 0x0000ff00, "FPS: %i", g.fps);
+
+        Rect r2;
+        r2.bot = g.yres - 50; r2.left = g.xres / 2; r2.center = 20;
+        ggprint16(&r2, 16, 0x00ffffff, "Time Remaining: %i", (int)g.remaining);
         glPopAttrib();
     }
 }
