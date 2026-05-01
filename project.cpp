@@ -218,7 +218,7 @@ public:
     glMatrixMode(GL_MODELVIEW); glLoadIdentity();
     set_title();
 }
-        
+
     void set_title() {
         XMapWindow(dpy, win);
         XStoreName(dpy, win, "UNCANNY VALLEY");
@@ -328,11 +328,11 @@ void Global::check_mouse(XEvent *e)
                 g.camera.position[2] -= g.camera.direction[2];
             }
             printf("savex: %i savey: %i\n", savex, savey);
-            if (e->xbutton.x >= 225 && e->xbutton.x <= 416 && e->xbutton.y >= 213 
+            if (e->xbutton.x >= 225 && e->xbutton.x <= 416 && e->xbutton.y >= 213
                     && e->xbutton.y <= 265 && g.menu_screen == 1 && g.start_screen == 0) {
                 g.menu_screen = 0;
             }
-            if (e->xbutton.x >= 225 && e->xbutton.x <= 416 && e->xbutton.y >= 213 
+            if (e->xbutton.x >= 225 && e->xbutton.x <= 416 && e->xbutton.y >= 213
                     && e->xbutton.y <= 265 && (g.lose_screen == 1 || g.win_screen == 1) && g.start_screen == 0) {
                 g.menu_screen = 1;
                 g.lose_screen = 0;
@@ -357,7 +357,7 @@ void Global::check_mouse(XEvent *e)
                 alSourceStop(srcGame);
                 alSourceStop(srcWin);
                 alSourceStop(srcNotime);
-            
+
             }
         }
         if (e->xbutton.button == 3) {
@@ -399,24 +399,24 @@ int Global::check_keys(XEvent *e)
             case XK_3:
                 g.deathtime = time(nullptr) + 10;
                 g.start_countdown = 1;
-                printf("XK_3: g.deathtime=%ld now=%ld diff=%ld\n", 
+                printf("XK_3: g.deathtime=%ld now=%ld diff=%ld\n",
                     (long)g.deathtime, (long)time(nullptr),
                     (long)g.deathtime - (long)time(nullptr));
                 break;
-            case XK_4:     
+            case XK_4:
                 if (g.start_screen == 1) {
-                    g.start_screen = 0; 
-                    g.menu_screen = 1; 
+                    g.start_screen = 0;
+                    g.menu_screen = 1;
                 }
                 break;
-            case XK_5:     
-                g.deathtime = time(nullptr) + 300; 
+            case XK_5:
+                g.deathtime = time(nullptr) + 300;
                 break;
             case XK_space:
                 if (g.state == 1 && g.camera.position[1] <= 3.2)
                     g.camera.force[1] += 0.2;
                 break;
-            case XK_Escape: 
+            case XK_Escape:
                 return 1;
         }
     }
@@ -641,7 +641,7 @@ void render_win()
     glMatrixMode(GL_MODELVIEW); glLoadIdentity();
     glPushAttrib(GL_ENABLE_BIT);
     glDisable(GL_LIGHTING);
-    
+
 
     int bw = 200, bh = 60;
     int cx = g.xres / 2, cy = g.yres / 2;
@@ -661,15 +661,15 @@ void render_win()
     glEnd();
     //glPopAttrib();
     Rect r;
-    r.bot = g.yres - 150; 
-    r.left = g.xres / 2; 
+    r.bot = g.yres - 150;
+    r.left = g.xres / 2;
     r.center = 20;
     ggprint16(&r, 16, 0x00ffffff, "Congratulations, You Escaped!");
-    ggprint16(&r, 16, 0x00ffffff, "You are now Free From The Uncanny Valley");
+    ggprint16(&r, 16, 0x00ffffff, "You are now Free From The Uncanny Hallway");
 
     Rect r2;
-    r2.bot = cy; 
-    r2.left = cx; 
+    r2.bot = cy;
+    r2.left = cx;
     r2.center = 20;
     ggprint12(&r2, 16, 0x00ffffff, "Back to Menu");
 
@@ -680,9 +680,9 @@ void render_win()
 void render_menu()
 {
 
-	
+
     if (g.game_sound_played == 0) {
-            
+
         alSourcei(srcMenu, AL_LOOPING, AL_TRUE);
         alSourcePlay(srcMenu);
         g.game_sound_played = 1;
@@ -713,12 +713,12 @@ void render_menu()
         glVertex2f(cx-bw/2, cy-bh/2); glVertex2f(cx+bw/2, cy-bh/2);
         glVertex2f(cx+bw/2, cy+bh/2); glVertex2f(cx-bw/2, cy+bh/2);
     glEnd();
-	
+
 
     //glPopAttrib();
     Rect r;
     r.bot = g.yres - 50; r.left = g.xres / 2; r.center = 20;
-    ggprint16(&r, 16, 0x00ffffff, "UNCANNY VALLEY");
+    ggprint16(&r, 16, 0x00ffffff, "UNCANNY HALLWAY");
     Rect r2;
     r2.bot = g.yres / 2; r2.left = g.xres / 2; r2.center = 20;
     ggprint12(&r2, 16, 0x00ffffff, "Play");
@@ -767,29 +767,29 @@ void Global::render()
                 glTexCoord2f(0,0); glVertex2f(x0,y1);
             glEnd();
             glDisable(GL_TEXTURE_2D);
-	     glBindTexture(GL_TEXTURE_2D, 0);
+             glBindTexture(GL_TEXTURE_2D, 0);
             glMatrixMode(GL_TEXTURE); glLoadIdentity();
             glMatrixMode(GL_MODELVIEW);
         }
-	
-	glBindTexture(GL_TEXTURE_2D, 0);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
         glMatrixMode(GL_TEXTURE); glLoadIdentity();
-        glMatrixMode(GL_MODELVIEW); 
+        glMatrixMode(GL_MODELVIEW);
 
         Rect r;
-        r.bot = g.yres - 50; 
-        r.left = g.xres / 2; 
+        r.bot = g.yres - 50;
+        r.left = g.xres / 2;
         r.center = 20;
         ggprint16(&r, 16, 0x00ffffff, "UNCANNY Hallway");
         Rect r2;
-        r2.bot = (int)(g.yres * 0.15f); 
-        r2.left = g.xres / 2; 
+        r2.bot = (int)(g.yres * 0.15f);
+        r2.left = g.xres / 2;
         r2.center = 20;
         ggprint12(&r2, 16, 0x00ffffff, "Press 4 to Skip");
         if (elapsed < 3.0 && elapsed > 0.5) {
             Rect r3;
-            r3.bot = g.yres /2; 
-            r3.left = g.xres / 2; 
+            r3.bot = g.yres /2;
+            r3.left = g.xres / 2;
             r3.center = 20;
             ggprint12(&r3, 16, 0x00ffffff, "A scary game made by Moises, Jaden, and Haonan");
         }
@@ -809,7 +809,7 @@ void Global::render()
     } else if (g.win_screen) {
         render_win();
     } else if(g.lose_screen) {
-	 if (!g.lose_initialized) {
+         if (!g.lose_initialized) {
         g.lose_start = time(nullptr);
         g.lose_initialized = 1;
     }
@@ -825,7 +825,7 @@ void Global::render()
         glMatrixMode(GL_MODELVIEW); glLoadIdentity();
         glPushAttrib(GL_ENABLE_BIT);
         glDisable(GL_LIGHTING);
-        if (lose_time_elap < 0.01) {
+        if (lose_time_elap < 0.001) {
             alSourcei(srcIntro, AL_LOOPING, AL_FALSE);
             alSourcePlay(srcIntro);
         }
@@ -839,9 +839,9 @@ void Global::render()
             glTexCoord2f(0,0); glVertex2f(0, g.yres);
         glEnd();
         glPopAttrib();  // restores state just like start scree
-	} else {
+        } else {
         render_lose();
-	}
+        }
     } else {
         if (g.game_sound_played == 0) {
             alSourcei(srcGame, AL_LOOPING, AL_TRUE);
@@ -851,8 +851,8 @@ void Global::render()
         if (g.start_countdown == 0) {
             g.deathtime = time(nullptr) + 120.0f;
             g.start_countdown = 1;
-            printf("g.deathtime set: %ld, now: %ld, diff: %ld\n", 
-           (long)g.deathtime, (long)time(nullptr), 
+            printf("g.deathtime set: %ld, now: %ld, diff: %ld\n",
+           (long)g.deathtime, (long)time(nullptr),
            (long)g.deathtime - (long)time(nullptr));
         } else {
             time_t current_Time = time(nullptr);
@@ -945,7 +945,7 @@ if (g.door_unlocked) {
     glEnable(GL_TEXTURE_2D);
 }
 
-        
+
 
         enemy.draw();
 
