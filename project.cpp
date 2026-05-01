@@ -577,14 +577,8 @@ void render_lose()
             alSourcei(srcIntro, AL_LOOPING, AL_FALSE);
             alSourcePlay(srcIntro);
         }
-
-        //render_jumpscare();
-    } else 
-    //alSourceStop(srcIntro);
+    }
     g.jump_scare_done = 1;
-    //initialize_fonts();
-    //render_win();
-    
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
     glViewport(0, 0, g.xres, g.yres);
@@ -685,10 +679,10 @@ void render_menu()
 {
     if (g.game_sound_played == 0) {
             
-            alSourcei(srcMenu, AL_LOOPING, AL_TRUE);
-            alSourcePlay(srcMenu);
-            g.game_sound_played = 1;
-        }
+        alSourcei(srcMenu, AL_LOOPING, AL_TRUE);
+        alSourcePlay(srcMenu);
+        g.game_sound_played = 1;
+    }
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
