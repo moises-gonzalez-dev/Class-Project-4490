@@ -104,6 +104,8 @@ public:
     int win_sound_played;
     int start_countdown;
     int jump_scare_done;
+    time_t lose_start;
+    int lose_initialized;
     double remaining;
     int coins_collected;
     bool door_unlocked;
@@ -119,6 +121,8 @@ public:
         menu_screen = 0;
         lose_screen = 0;
         win_screen = 0;
+        lose_start = 0;
+        lose_initialized = 0;
         intro_sound_played = 0;
         game_sound_played = 0;
         win_sound_played = 0;
@@ -330,12 +334,32 @@ void Global::check_mouse(XEvent *e)
             }
             if (e->xbutton.x >= 225 && e->xbutton.x <= 416 && e->xbutton.y >= 213 
                     && e->xbutton.y <= 265 && (g.lose_screen == 1 || g.win_screen == 1) && g.start_screen == 0) {
-                g.menu_screen = 1;
-                g.lose_screen = 0;
-                g.win_screen = 0;
-                g.start_countdown = 0;
-                g.win_sound_played = 0;
-                jump_scare_done = 0;
+            
+
+g.menu_screen = 1;
+g.lose_screen = 0;
+g.win_screen = 0;
+g.start_countdown = 0;
+g.win_sound_played = 0;
+g.jump_scare_done = 0;
+g.coins_collected = 0;
+g.door_unlocked = false;
+g.game_sound_played = 0;
+g.remaining = 0.0;
+g.lose_start = 0;
+g.lose_initialized = 0;
+// reset camera to start position
+VecMake(0, 3, 0, g.camera.position);
+VecMake(0, 0, 1, g.camera.direction);
+VecMake(0, 0, 0, g.camera.vel);
+VecMake(0, 0, 0, g.camera.force);
+// respawn coins
+spawnCoins();
+// stop all sounds
+alSourceStop(srcGame);
+alSourceStop(srcWin);
+alSourceStop(srcNotime);
+            
             }
         }
         if (e->xbutton.button == 3) {
@@ -681,13 +705,16 @@ void Global::render()
         ggprint12(&r2, 16, 0x00ffffff, "Back to Menu");
 
         glEnable(GL_DEPTH_TEST);
-        glPopAttrib(); 
-    } else if(g.lose_screen) {
-        static time_t lose_start = 0;
-        if (lose_start == 0) {
-            lose_start = time(nullptr);
+        glPopAttrib();
+
+
+
+        } else if(g.lose_screen) {
+        if (!g.lose_initialized) {
+            g.lose_start = time(nullptr);
+            g.lose_initialized = 1;
         }
-        double lose_time_elap = difftime(time(nullptr), lose_start);
+        double lose_time_elap = difftime(time(nullptr), g.lose_start);
         if (lose_time_elap < 3.0 && g.jump_scare_done == 0) {
             if (lose_time_elap < 0.0001) {
                 alSourcei(srcIntro, AL_LOOPING, AL_FALSE);
@@ -704,30 +731,25 @@ void Global::render()
             glEnd();
             glDisable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, 0);
-
         } else {
             g.jump_scare_done = 1;
             alSourceStop(srcIntro);
-
             glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
             glViewport(0, 0, g.xres, g.yres);
             glMatrixMode(GL_PROJECTION); glLoadIdentity();
             gluOrtho2D(0, g.xres, 0, g.yres);
             glMatrixMode(GL_MODELVIEW); glLoadIdentity();
-            glPushAttrib(GL_ENABLE_BIT);       
-            glDisable(GL_LIGHTING);           
-
+            glPushAttrib(GL_ENABLE_BIT);
+            glDisable(GL_LIGHTING);
             int bw = 200, bh = 60;
             int cx = g.xres / 2, cy = g.yres / 2;
             glDisable(GL_DEPTH_TEST);
-
             glColor4f(0.1f, 0.1f, 0.1f, 0.85f);
             glBegin(GL_QUADS);
                 glVertex2f(cx-bw/2, cy-bh/2); glVertex2f(cx+bw/2, cy-bh/2);
                 glVertex2f(cx+bw/2, cy+bh/2); glVertex2f(cx-bw/2, cy+bh/2);
             glEnd();
-
             glColor3f(1.0f, 1.0f, 1.0f);
             glLineWidth(2.0f);
             glBegin(GL_LINE_LOOP);
@@ -737,7 +759,6 @@ void Global::render()
             glMatrixMode(GL_TEXTURE);
             glLoadIdentity();
             glMatrixMode(GL_MODELVIEW);
-
             initialize_fonts();
             Rect r;
             r.bot = g.yres - 150;
@@ -745,17 +766,14 @@ void Global::render()
             r.center = 20;
             ggprint16(&r, 16, 0x00ffffff, "The Monster Caught You");
             ggprint16(&r, 16, 0x00ffffff, "You Have Failed To Escape");
-
             Rect r2;
             r2.bot = cy;
             r2.left = cx;
             r2.center = 20;
             ggprint12(&r2, 16, 0x00ffffff, "Back to Menu");
-
             glEnable(GL_DEPTH_TEST);
-            glPopAttrib();      
+            glPopAttrib();
         }
-
     } else {
         if (g.game_sound_played == 0) {
             alSourcei(srcGame, AL_LOOPING, AL_TRUE);
